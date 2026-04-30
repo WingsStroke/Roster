@@ -6,7 +6,7 @@ const navItems = [
   { id: 'empleados', label: 'Empleados', icon: Users },
   { id: 'liquidacion', label: 'Liquidar Nómina', icon: Calculator },
   { id: 'liquidacion-lote', label: 'Liquidar por lotes', icon: Layers },
-  { id: 'liquidacion-avanzada', label: 'Liquidación por Asistencia', icon: CalendarClock },
+  { id: 'liquidacion-avanzada', label: 'Liquidación Diaria', icon: CalendarClock },
   { id: 'liquidacion-final', label: 'Liquidación Final', icon: UserX },
   { id: 'historial', label: 'Historial', icon: ClipboardList },
   { id: 'configuracion', label: 'Configuración', icon: Settings },
