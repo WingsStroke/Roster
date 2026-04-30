@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 import uuid
 from datetime import datetime, timezone, date, timedelta
+from dataclasses import asdict, is_dataclass
+from typing import Any
 
 from models import (
     EmpresaCreate, EmpresaUpdate,
@@ -26,6 +28,18 @@ from nominaAsistenciaEngine import (
     generar_precarga_asistencia,
     es_festivo
 )
+
+
+def dataclass_to_dict(obj: Any) -> Any:
+    """Convierte recursivamente dataclasses a diccionarios."""
+    if is_dataclass(obj):
+        return asdict(obj)
+    elif isinstance(obj, list):
+        return [dataclass_to_dict(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: dataclass_to_dict(value) for key, value in obj.items()}
+    return obj
+
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -505,6 +519,7 @@ async def crear_liquidacion_avanzada(data: LiquidacionAvanzadaCreate):
     )
     
     # Guardar resultado en base de datos
+    resultado_dict = dataclass_to_dict(resultado)
     liquidacion_doc = {
         "id": str(uuid.uuid4()),
         "empleado_id": data.empleado_id,
@@ -512,7 +527,7 @@ async def crear_liquidacion_avanzada(data: LiquidacionAvanzadaCreate):
         "fecha_inicio": data.fecha_inicio,
         "fecha_fin": data.fecha_fin,
         "tipo_periodo": data.tipo_periodo,
-        "resultado": resultado.__dict__,
+        "resultado": resultado_dict,
         "estado": "calculada",
         "fecha_calculo": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -522,7 +537,7 @@ async def crear_liquidacion_avanzada(data: LiquidacionAvanzadaCreate):
     
     return {
         "liquidacion_id": liquidacion_doc["id"],
-        "resultado": resultado.__dict__,
+        "resultado": resultado_dict,
         "estado": "calculada"
     }
 
