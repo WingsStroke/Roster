@@ -305,7 +305,8 @@ export const horarioContractualSchema = z.object({
 
 const HOY = new Date().toISOString().split('T')[0];
 
-export const asistenciaDiariaSchema = z.object({
+// Schema base sin el .refine() para permitir .partial()
+const asistenciaDiariaSchemaBase = z.object({
   empleado_id: z.string().min(1, 'Empleado requerido'),
   empresa_id: z.string().min(1, 'Empresa requerida'),
   
@@ -340,7 +341,10 @@ export const asistenciaDiariaSchema = z.object({
     .min(30, 'Mínimo 30 minutos')
     .max(120, 'Máximo 120 minutos')
     .optional(),
-}).refine(
+});
+
+// Schema de creación con validación de cruce de horas
+export const asistenciaDiariaSchema = asistenciaDiariaSchemaBase.refine(
   (data) => {
     // Si el estado es 'asistio', se requieren hora_entrada y hora_salida
     if (data.estado === 'asistio') {
@@ -357,7 +361,8 @@ export const asistenciaDiariaSchema = z.object({
   }
 );
 
-export const asistenciaDiariaUpdateSchema = asistenciaDiariaSchema.partial();
+// Schema de actualización - partial() sobre el schema base
+export const asistenciaDiariaUpdateSchema = asistenciaDiariaSchemaBase.partial();
 
 // Schema para batch/precarga de asistencias
 export const batchAsistenciaSchema = z.object({
