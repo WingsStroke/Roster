@@ -1,0 +1,315 @@
+from fastapi import FastAPI, APIRouter, HTTPException
+from dotenv import load_dotenv
+from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+import os
+import logging
+from pathlib import Path
+import uuid
+from datetime import datetime, timezone
+
+from models import (
+    EmpresaCreate, EmpresaUpdate,
+    EmpleadoCreate, EmpleadoUpdate,
+    LiquidacionCreate, LiquidacionUpdate,
+    LiquidacionFinalCreate,
+    ConfiguracionUpdate
+)
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
+mongo_url = os.environ['MONGO_URL']
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ['DB_NAME']]
+
+app = FastAPI()
+api_router = APIRouter(prefix="/api")
+
+
+# --- Health check ---
+@api_router.get("/")
+async def root():
+    return {"message": "NóminaCol API v1.0"}
+
+
+# --- Empresas ---
+@api_router.post("/empresas")
+async def crear_empresa(data: EmpresaCreate):
+    doc = {**data.model_dump(), "id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.empresas.insert_one(doc)
+    return await db.empresas.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@api_router.get("/empresas")
+async def listar_empresas():
+    return await db.empresas.find({}, {"_id": 0}).to_list(100)
+
+
+@api_router.put("/empresas/{empresa_id}")
+async def actualizar_empresa(empresa_id: str, data: EmpresaUpdate):
+    update_dict = data.model_dump(exclude_unset=True, exclude={"id", "_id"})
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    await db.empresas.update_one({"id": empresa_id}, {"$set": update_dict})
+    result = await db.empresas.find_one({"id": empresa_id}, {"_id": 0})
+    if not result:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return result
+
+
+@api_router.delete("/empresas/{empresa_id}")
+async def eliminar_empresa(empresa_id: str):
+    await db.empresas.delete_one({"id": empresa_id})
+    await db.empleados.delete_many({"empresa_id": empresa_id})
+    await db.liquidaciones.delete_many({"empresa_id": empresa_id})
+    await db.liquidaciones_final.delete_many({"empresa_id": empresa_id})
+    return {"ok": True}
+
+
+# --- Empleados ---
+@api_router.post("/empleados")
+async def crear_empleado(data: EmpleadoCreate):
+    doc = {**data.model_dump(), "id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.empleados.insert_one(doc)
+    return await db.empleados.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@api_router.get("/empleados")
+async def listar_empleados(empresa_id: str):
+    return await db.empleados.find({"empresa_id": empresa_id}, {"_id": 0}).to_list(1000)
+
+
+@api_router.get("/empleados/{empleado_id}")
+async def obtener_empleado(empleado_id: str):
+    emp = await db.empleados.find_one({"id": empleado_id}, {"_id": 0})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    return emp
+
+
+@api_router.put("/empleados/{empleado_id}")
+async def actualizar_empleado(empleado_id: str, data: EmpleadoUpdate):
+    update_dict = data.model_dump(exclude_unset=True, exclude={"id", "_id"})
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    await db.empleados.update_one({"id": empleado_id}, {"$set": update_dict})
+    result = await db.empleados.find_one({"id": empleado_id}, {"_id": 0})
+    if not result:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    return result
+
+
+@api_router.delete("/empleados/{empleado_id}")
+async def eliminar_empleado(empleado_id: str):
+    await db.empleados.delete_one({"id": empleado_id})
+    await db.liquidaciones.delete_many({"empleado_id": empleado_id})
+    await db.liquidaciones_final.delete_many({"empleado_id": empleado_id})
+    return {"ok": True}
+
+
+# --- Liquidaciones ---
+@api_router.post("/liquidaciones")
+async def crear_liquidacion(data: LiquidacionCreate):
+    doc = {**data.model_dump(), "id": str(uuid.uuid4()), "fecha_creacion": datetime.now(timezone.utc).isoformat()}
+    await db.liquidaciones.insert_one(doc)
+    return await db.liquidaciones.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@api_router.get("/liquidaciones")
+async def listar_liquidaciones(empresa_id: str):
+    return await db.liquidaciones.find(
+        {"empresa_id": empresa_id}, {"_id": 0}
+    ).sort("fecha_creacion", -1).to_list(1000)
+
+
+@api_router.get("/liquidaciones/{liquidacion_id}")
+async def obtener_liquidacion(liquidacion_id: str):
+    liq = await db.liquidaciones.find_one({"id": liquidacion_id}, {"_id": 0})
+    if not liq:
+        raise HTTPException(status_code=404, detail="Liquidación no encontrada")
+    return liq
+
+
+@api_router.put("/liquidaciones/{liquidacion_id}")
+async def actualizar_liquidacion(liquidacion_id: str, data: LiquidacionUpdate):
+    update_dict = data.model_dump(exclude_unset=True, exclude={"id", "_id"})
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    await db.liquidaciones.update_one({"id": liquidacion_id}, {"$set": update_dict})
+    result = await db.liquidaciones.find_one({"id": liquidacion_id}, {"_id": 0})
+    if not result:
+        raise HTTPException(status_code=404, detail="Liquidación no encontrada")
+    return result
+
+
+@api_router.delete("/liquidaciones/{liquidacion_id}")
+async def eliminar_liquidacion(liquidacion_id: str):
+    await db.liquidaciones.delete_one({"id": liquidacion_id})
+    return {"ok": True}
+
+
+# --- Liquidaciones Final (retiro) ---
+@api_router.post("/liquidaciones-final")
+async def crear_liquidacion_final(data: LiquidacionFinalCreate):
+    doc = {**data.model_dump(), "id": str(uuid.uuid4()), "fecha_creacion": datetime.now(timezone.utc).isoformat()}
+    await db.liquidaciones_final.insert_one(doc)
+    # Cambiar estado del empleado a 'retirado'
+    await db.empleados.update_one({"id": data.empleado_id}, {"$set": {"estado": "retirado"}})
+    return await db.liquidaciones_final.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@api_router.get("/liquidaciones-final")
+async def listar_liquidaciones_final(empresa_id: str):
+    return await db.liquidaciones_final.find(
+        {"empresa_id": empresa_id}, {"_id": 0}
+    ).sort("fecha_creacion", -1).to_list(1000)
+
+
+@api_router.get("/liquidaciones-final/{liquidacion_id}")
+async def obtener_liquidacion_final(liquidacion_id: str):
+    liq = await db.liquidaciones_final.find_one({"id": liquidacion_id}, {"_id": 0})
+    if not liq:
+        raise HTTPException(status_code=404, detail="Liquidación final no encontrada")
+    return liq
+
+
+@api_router.delete("/liquidaciones-final/{liquidacion_id}")
+async def eliminar_liquidacion_final(liquidacion_id: str):
+    await db.liquidaciones_final.delete_one({"id": liquidacion_id})
+    return {"ok": True}
+
+
+# --- Configuración ---
+@api_router.get("/configuracion")
+async def obtener_configuracion():
+    config = await db.configuracion.find_one({}, {"_id": 0})
+    if not config:
+        default = {"smmlv": 1750905, "auxilio_transporte": 249095, "jornada_horas": 44, "ano": 2026}
+        await db.configuracion.insert_one(default)
+        config = await db.configuracion.find_one({}, {"_id": 0})
+    return config
+
+
+@api_router.put("/configuracion")
+async def actualizar_configuracion(data: ConfiguracionUpdate):
+    update_dict = data.model_dump(exclude_unset=True, exclude={"_id"})
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    existing = await db.configuracion.find_one({})
+    if existing:
+        await db.configuracion.update_one({"_id": existing["_id"]}, {"$set": update_dict})
+    else:
+        await db.configuracion.insert_one(update_dict)
+    return await db.configuracion.find_one({}, {"_id": 0})
+
+
+# --- Dashboard ---
+@api_router.get("/dashboard")
+async def obtener_dashboard(empresa_id: str):
+    empleados = await db.empleados.find(
+        {"empresa_id": empresa_id, "estado": "activo"}, {"_id": 0}
+    ).to_list(1000)
+    liquidaciones = await db.liquidaciones.find(
+        {"empresa_id": empresa_id}, {"_id": 0}
+    ).sort("fecha_creacion", -1).to_list(20)
+
+    now = datetime.now(timezone.utc)
+    periodo_actual = f"{now.year}-{now.month:02d}"
+    liqs_mes = [l for l in liquidaciones if l.get("periodo") == periodo_actual]
+    total_nomina = sum(l.get("neto", 0) for l in liqs_mes)
+    pendientes = [l for l in liquidaciones if l.get("estado") == "pendiente"]
+
+    return {
+        "total_empleados_activos": len(empleados),
+        "total_nomina_mes": total_nomina,
+        "periodo_actual": periodo_actual,
+        "liquidaciones_pendientes": len(pendientes),
+        "ultimas_liquidaciones": liquidaciones[:5],
+    }
+
+
+# --- Seed demo data ---
+@api_router.post("/seed")
+async def seed_data():
+    count = await db.empresas.count_documents({})
+    if count > 0:
+        return {"message": "Ya existen datos", "seeded": False}
+
+    empresa_id = str(uuid.uuid4())
+    empresa = {
+        "id": empresa_id,
+        "nombre": "Café Colombiano S.A.S",
+        "nit": "900.123.456-7",
+        "direccion": "Calle 72 #10-34, Bogotá D.C.",
+        "telefono": "601-3456789",
+        "representante": "María Fernanda López",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.empresas.insert_one(empresa)
+
+    empleados_data = [
+        {
+            "nombre": "Carlos Andrés Martínez", "cedula": "1.024.567.890",
+            "cargo": "Administrador de Tienda", "fecha_ingreso": "2023-03-15",
+            "tipo_contrato": "indefinido", "salario": 2800000, "riesgo_arl": "I",
+            "auxilio_transporte": True, "eps": "Sura EPS", "afp": "Protección",
+            "caja": "Compensar", "cuenta_bancaria": "4567-8901-2345", "estado": "activo",
+        },
+        {
+            "nombre": "Laura Valentina Rodríguez", "cedula": "1.098.765.432",
+            "cargo": "Barista Senior", "fecha_ingreso": "2024-01-10",
+            "tipo_contrato": "indefinido", "salario": 1750905, "riesgo_arl": "I",
+            "auxilio_transporte": True, "eps": "Nueva EPS", "afp": "Porvenir",
+            "caja": "Cafam", "cuenta_bancaria": "7890-1234-5678", "estado": "activo",
+        },
+        {
+            "nombre": "Juan Sebastián Gómez", "cedula": "79.456.123",
+            "cargo": "Contador", "fecha_ingreso": "2022-06-01",
+            "tipo_contrato": "fijo", "salario": 4200000, "riesgo_arl": "I",
+            "auxilio_transporte": False, "eps": "Sanitas", "afp": "Colfondos",
+            "caja": "Colsubsidio", "cuenta_bancaria": "1234-5678-9012", "estado": "activo",
+        },
+        {
+            "nombre": "Ana María Herrera", "cedula": "52.789.456",
+            "cargo": "Mesera", "fecha_ingreso": "2025-02-20",
+            "tipo_contrato": "indefinido", "salario": 1750905, "riesgo_arl": "II",
+            "auxilio_transporte": True, "eps": "Famisanar", "afp": "Protección",
+            "caja": "Compensar", "cuenta_bancaria": "", "estado": "activo",
+        },
+        {
+            "nombre": "Diego Alejandro Ruiz", "cedula": "80.234.567",
+            "cargo": "Repartidor", "fecha_ingreso": "2024-08-05",
+            "tipo_contrato": "obra", "salario": 1750905, "riesgo_arl": "IV",
+            "auxilio_transporte": True, "eps": "Sura EPS", "afp": "Porvenir",
+            "caja": "Cafam", "cuenta_bancaria": "3456-7890-1234", "estado": "activo",
+        },
+    ]
+
+    for emp in empleados_data:
+        doc = {**emp, "id": str(uuid.uuid4()), "empresa_id": empresa_id, "created_at": datetime.now(timezone.utc).isoformat()}
+        await db.empleados.insert_one(doc)
+
+    config = {"smmlv": 1750905, "auxilio_transporte": 249095, "jornada_horas": 44, "ano": 2026}
+    await db.configuracion.insert_one(config)
+
+    return {"message": "Datos de prueba creados exitosamente", "seeded": True, "empresa_id": empresa_id}
+
+
+app.include_router(api_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
