@@ -93,16 +93,15 @@ export default function CalendarioAsistencia({
   const getEstadoStyles = (dia) => {
     const { asistencia, esFestivo, diaSemana } = dia;
     
-    // Sin registro
+    // Sin registro: festivo o domingo (azul), o vacío (gris)
     if (!asistencia) {
+      if (esFestivo || diaSemana === 0) {
+        return 'bg-blue-950/30 border-blue-600/30 text-blue-200';
+      }
       return 'bg-[#1A1A1A] border-[#2A2A2A] text-[#A0A0A0]';
     }
 
-    // Festivo o domingo
-    if (esFestivo || diaSemana === 0) {
-      return 'bg-blue-950/30 border-blue-600/30 text-blue-200';
-    }
-
+    // Con asistencia: mostrar el color según el estado real
     switch (asistencia.estado) {
       case 'asistio':
         // Verificar si tiene horas extras
