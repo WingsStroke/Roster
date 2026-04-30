@@ -37,4 +37,29 @@ export const api = {
 
   // Seed
   seed: () => axios.post(`${API}/seed`).then(r => r.data),
+
+  // Asistencia Diaria
+  getAsistencias: (empleadoId, fechaInicio, fechaFin) => {
+    let url = `${API}/asistencias?empleado_id=${empleadoId}`;
+    if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
+    if (fechaFin) url += `&fecha_fin=${fechaFin}`;
+    return axios.get(url).then(r => r.data);
+  },
+  getAsistencia: (id) => axios.get(`${API}/asistencias/${id}`).then(r => r.data),
+  createAsistencia: (data) => axios.post(`${API}/asistencias`, data).then(r => r.data),
+  createAsistenciasBatch: (data) => axios.post(`${API}/asistencias/batch`, data).then(r => r.data),
+  updateAsistencia: (id, data) => axios.put(`${API}/asistencias/${id}`, data).then(r => r.data),
+  deleteAsistencia: (id) => axios.delete(`${API}/asistencias/${id}`).then(r => r.data),
+
+  // Liquidación Avanzada por Asistencia
+  createLiquidacionAvanzada: (data) => axios.post(`${API}/liquidaciones-avanzadas`, data).then(r => r.data),
+  getLiquidacionesAvanzadas: (empresaId, empleadoId) => {
+    let url = `${API}/liquidaciones-avanzadas?empresa_id=${empresaId}`;
+    if (empleadoId) url += `&empleado_id=${empleadoId}`;
+    return axios.get(url).then(r => r.data);
+  },
+
+  // Festivos
+  getFestivos: (ano = 2026) => axios.get(`${API}/festivos?ano=${ano}`).then(r => r.data),
+  verificarFestivo: (fecha) => axios.get(`${API}/festivos/verificar?fecha=${fecha}`).then(r => r.data),
 };

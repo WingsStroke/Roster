@@ -256,3 +256,156 @@ export const configuracionSchema = z.object({
 });
 
 export const configuracionUpdateSchema = configuracionSchema.partial();
+
+// ============================================================================
+// HORARIO CONTRACTUAL (para empleados)
+// ============================================================================
+
+export const horarioContractualSchema = z.object({
+  hora_entrada_default: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Formato HH:MM requerido (00:00-23:59)'),
+  
+  hora_salida_default: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Formato HH:MM requerido (00:00-23:59)'),
+  
+  minutos_almuerzo_default: z
+    .number()
+    .int()
+    .min(30, 'Mínimo 30 minutos')
+    .max(120, 'Máximo 120 minutos')
+    .default(60),
+  
+  dias_laborales: z
+    .array(z.number().min(0).max(6))
+    .refine(
+      (arr) => arr.length > 0,
+      { message: 'Debe haber al menos un día laboral' }
+    )
+    .default([1, 2, 3, 4, 5]), // Lunes a Viernes
+  
+  jornada_diaria_horas: z
+    .number()
+    .min(1, 'Mínimo 1 hora')
+    .max(12, 'Máximo 12 horas')
+    .default(8),
+}).refine(
+  (data) => {
+    const entrada = data.hora_entrada_default;
+    const salida = data.hora_salida_default;
+    return entrada < salida;
+  },
+  { message: 'Hora de salida debe ser mayor a hora de entrada', path: ['hora_salida_default'] }
+);
+
+// ============================================================================
+// ASISTENCIA DIARIA
+// ============================================================================
+
+const HOY = new Date().toISOString().split('T')[0];
+
+export const asistenciaDiariaSchema = z.object({
+  empleado_id: z.string().min(1, 'Empleado requerido'),
+  empresa_id: z.string().min(1, 'Empresa requerida'),
+  
+  fecha: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe tener formato YYYY-MM-DD')
+    .refine(
+      (val) => val <= HOY,
+      { message: 'La fecha no puede ser futura' }
+    ),
+  
+  estado: z.enum(
+    ['asistio', 'inasistencia', 'incapacidad', 'licencia', 'vacaciones', 'festivo'],
+    { errorMap: () => ({ message: 'Estado de asistencia inválido' }) }
+  ),
+  
+  hora_entrada: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Formato HH:MM requerido')
+    .optional()
+    .or(z.literal('')),
+  
+  hora_salida: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Formato HH:MM requerido')
+    .optional()
+    .or(z.literal('')),
+  
+  minutos_almuerzo: z
+    .number()
+    .int()
+    .min(30, 'Mínimo 30 minutos')
+    .max(120, 'Máximo 120 minutos')
+    .optional(),
+}).refine(
+  (data) => {
+    // Si el estado es 'asistio', se requieren hora_entrada y hora_salida
+    if (data.estado === 'asistio') {
+      if (!data.hora_entrada || !data.hora_salida) {
+        return false;
+      }
+      return data.hora_entrada < data.hora_salida;
+    }
+    return true;
+  },
+  {
+    message: 'Para estado "Asistió", hora de salida debe ser mayor a hora de entrada',
+    path: ['hora_salida'],
+  }
+);
+
+export const asistenciaDiariaUpdateSchema = asistenciaDiariaSchema.partial();
+
+// Schema para batch/precarga de asistencias
+export const batchAsistenciaSchema = z.object({
+  empleado_id: z.string().min(1, 'Empleado requerido'),
+  empresa_id: z.string().min(1, 'Empresa requerida'),
+  
+  fecha_inicio: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe tener formato YYYY-MM-DD'),
+  
+  fecha_fin: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe tener formato YYYY-MM-DD'),
+  
+  horario_default: horarioContractualSchema,
+}).refine(
+  (data) => data.fecha_fin >= data.fecha_inicio,
+  { message: 'Fecha fin debe ser posterior o igual a fecha inicio', path: ['fecha_fin'] }
+);
+
+// ============================================================================
+// LIQUIDACIÓN AVANZADA POR ASISTENCIA
+// ============================================================================
+
+export const liquidacionAvanzadaSchema = z.object({
+  empleado_id: z.string().min(1, 'Empleado requerido'),
+  empresa_id: z.string().min(1, 'Empresa requerida'),
+  
+  fecha_inicio: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe tener formato YYYY-MM-DD'),
+  
+  fecha_fin: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe tener formato YYYY-MM-DD'),
+  
+  tipo_periodo: z.enum(['quincenal', 'mensual', 'personalizado'], {
+    errorMap: () => ({ message: 'Tipo de período inválido' }),
+  }),
+}).refine(
+  (data) => data.fecha_fin >= data.fecha_inicio,
+  { message: 'Fecha fin debe ser posterior o igual a fecha inicio', path: ['fecha_fin'] }
+).refine(
+  (data) => {
+    const inicio = new Date(data.fecha_inicio);
+    const fin = new Date(data.fecha_fin);
+    const diasDiferencia = (fin - inicio) / (1000 * 60 * 60 * 24);
+    return diasDiferencia <= 31;
+  },
+  { message: 'El período no puede exceder 31 días', path: ['fecha_fin'] }
+);

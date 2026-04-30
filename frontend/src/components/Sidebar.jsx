@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Calculator, ClipboardList, Settings, ChevronLeft, ChevronRight, Building2, UserX, Layers } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, ClipboardList, Settings, ChevronLeft, ChevronRight, Building2, UserX, Layers, CalendarClock } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const navItems = [
@@ -6,6 +6,7 @@ const navItems = [
   { id: 'empleados', label: 'Empleados', icon: Users },
   { id: 'liquidacion', label: 'Liquidar Nómina', icon: Calculator },
   { id: 'liquidacion-lote', label: 'Liquidar por lotes', icon: Layers },
+  { id: 'liquidacion-avanzada', label: 'Liquidación por Asistencia', icon: CalendarClock },
   { id: 'liquidacion-final', label: 'Liquidación Final', icon: UserX },
   { id: 'historial', label: 'Historial', icon: ClipboardList },
   { id: 'configuracion', label: 'Configuración', icon: Settings },

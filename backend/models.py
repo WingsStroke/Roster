@@ -277,3 +277,186 @@ class ConfiguracionUpdate(BaseModel):
     auxilio_transporte: Optional[float] = Field(None, ge=0)
     jornada_horas: Optional[int] = Field(None, ge=1, le=48)
     ano: Optional[int] = Field(None, ge=2020, le=2100)
+
+
+# ============================================================================
+# HORARIO CONTRACTUAL (para empleados)
+# ============================================================================
+
+class HorarioContractual(BaseModel):
+    """Horario laboral contractual del empleado."""
+    hora_entrada_default: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Formato HH:MM")
+    hora_salida_default: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Formato HH:MM")
+    minutos_almuerzo_default: int = Field(60, ge=30, le=120)
+    dias_laborales: list[int] = Field(default=[1, 2, 3, 4, 5], description="0=domingo, 6=sábado")
+    jornada_diaria_horas: int = Field(8, ge=1, le=12)
+
+    @field_validator('hora_entrada_default', 'hora_salida_default')
+    @classmethod
+    def validar_formato_hora(cls, v: str) -> str:
+        if not re.match(r'^(0\d|1\d|2[0-3]):([0-5]\d)$', v):
+            raise ValueError('Hora debe tener formato HH:MM (00:00-23:59)')
+        return v
+
+    @field_validator('dias_laborales')
+    @classmethod
+    def validar_dias_laborales(cls, v: list[int]) -> list[int]:
+        if not all(0 <= dia <= 6 for dia in v):
+            raise ValueError('Días laborales deben estar entre 0 (domingo) y 6 (sábado)')
+        if len(v) == 0:
+            raise ValueError('Debe haber al menos un día laboral')
+        return v
+
+
+class EmpleadoConHorarioCreate(EmpleadoCreate):
+    """Schema para crear empleado con horario contractual."""
+    horario: Optional[HorarioContractual] = None
+
+
+class EmpleadoConHorarioUpdate(EmpleadoUpdate):
+    """Schema para actualizar empleado incluyendo horario."""
+    horario: Optional[HorarioContractual] = None
+
+
+# ============================================================================
+# ASISTENCIA DIARIA
+# ============================================================================
+
+ESTADO_ASISTENCIA = Literal['asistio', 'inasistencia', 'incapacidad', 'licencia', 'vacaciones', 'festivo']
+
+
+class NovedadAsistencia(BaseModel):
+    """Novedad vinculada a un día de asistencia."""
+    tipo: Literal['incapacidad', 'licencia']
+    dias_incapacidad_acumulados: Optional[int] = None
+
+
+class CalculoDiario(BaseModel):
+    """Resultado del cálculo para un día específico."""
+    horas_ordinarias: float = 0
+    horas_nocturnas: float = 0
+    horas_extra_diurna: float = 0
+    horas_extra_nocturna: float = 0
+    es_dominical_festivo: bool = False
+    alertas: list[str] = []
+
+
+class AsistenciaDiariaCreate(BaseModel):
+    """Schema para crear registro diario de asistencia."""
+    empleado_id: str = Field(..., min_length=1)
+    empresa_id: str = Field(..., min_length=1)
+    fecha: str = Field(..., description="Formato: YYYY-MM-DD")
+    estado: ESTADO_ASISTENCIA
+    hora_entrada: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    hora_salida: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    minutos_almuerzo: Optional[int] = Field(None, ge=30, le=120)
+    novedad: Optional[NovedadAsistencia] = None
+    calculo_diario: Optional[CalculoDiario] = None
+
+    @field_validator('fecha')
+    @classmethod
+    def validar_fecha(cls, v: str) -> str:
+        try:
+            fecha = date.fromisoformat(v)
+        except ValueError:
+            raise ValueError('Fecha debe tener formato YYYY-MM-DD')
+        if fecha > date.today():
+            raise ValueError('Fecha no puede ser futura')
+        return v
+
+    @field_validator('hora_entrada', 'hora_salida')
+    @classmethod
+    def validar_horas_asistencia(cls, v: Optional[str], info) -> Optional[str]:
+        if v is None:
+            return v
+        if not re.match(r'^(0\d|1\d|2[0-3]):([0-5]\d)$', v):
+            raise ValueError('Hora debe tener formato HH:MM (00:00-23:59)')
+        
+        # Validar cruce de horas si ambas están presentes
+        data = info.data
+        if data.get('estado') == 'asistio':
+            entrada = data.get('hora_entrada')
+            salida = v if info.field_name == 'hora_salida' else data.get('hora_salida')
+            if entrada and salida and entrada >= salida:
+                raise ValueError('Hora de salida debe ser mayor a hora de entrada')
+        
+        return v
+
+
+class AsistenciaDiariaUpdate(BaseModel):
+    """Schema para actualizar registro de asistencia."""
+    estado: Optional[ESTADO_ASISTENCIA] = None
+    hora_entrada: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    hora_salida: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    minutos_almuerzo: Optional[int] = Field(None, ge=30, le=120)
+    novedad: Optional[NovedadAsistencia] = None
+    calculo_diario: Optional[CalculoDiario] = None
+
+
+class BatchAsistenciaCreate(BaseModel):
+    """Schema para crear múltiples registros de asistencia (precarga mes/quincena)."""
+    empleado_id: str = Field(..., min_length=1)
+    empresa_id: str = Field(..., min_length=1)
+    fecha_inicio: str = Field(..., description="Formato: YYYY-MM-DD")
+    fecha_fin: str = Field(..., description="Formato: YYYY-MM-DD")
+    horario_default: HorarioContractual
+
+    @field_validator('fecha_inicio', 'fecha_fin')
+    @classmethod
+    def validar_fechas(cls, v: str) -> str:
+        try:
+            date.fromisoformat(v)
+        except ValueError:
+            raise ValueError('Fecha debe tener formato YYYY-MM-DD')
+        return v
+
+    @field_validator('fecha_fin')
+    @classmethod
+    def validar_rango_fechas(cls, v: str, info) -> str:
+        fecha_fin = date.fromisoformat(v)
+        fecha_inicio_str = info.data.get('fecha_inicio')
+        if fecha_inicio_str:
+            fecha_inicio = date.fromisoformat(fecha_inicio_str)
+            if fecha_fin < fecha_inicio:
+                raise ValueError('Fecha fin debe ser posterior a fecha inicio')
+        return v
+
+
+# ============================================================================
+# LIQUIDACIÓN AVANZADA POR ASISTENCIA
+# ============================================================================
+
+TIPO_PERIODO = Literal['quincenal', 'mensual', 'personalizado']
+
+
+class LiquidacionAvanzadaCreate(BaseModel):
+    """Schema para crear liquidación basada en asistencia diaria."""
+    empleado_id: str = Field(..., min_length=1)
+    empresa_id: str = Field(..., min_length=1)
+    fecha_inicio: str = Field(..., description="Formato: YYYY-MM-DD")
+    fecha_fin: str = Field(..., description="Formato: YYYY-MM-DD")
+    tipo_periodo: TIPO_PERIODO
+
+    @field_validator('fecha_inicio', 'fecha_fin')
+    @classmethod
+    def validar_fechas(cls, v: str) -> str:
+        try:
+            date.fromisoformat(v)
+        except ValueError:
+            raise ValueError('Fecha debe tener formato YYYY-MM-DD')
+        return v
+
+    @field_validator('fecha_fin')
+    @classmethod
+    def validar_rango_fechas(cls, v: str, info) -> str:
+        fecha_fin = date.fromisoformat(v)
+        fecha_inicio_str = info.data.get('fecha_inicio')
+        if fecha_inicio_str:
+            fecha_inicio = date.fromisoformat(fecha_inicio_str)
+            if fecha_fin < fecha_inicio:
+                raise ValueError('Fecha fin debe ser posterior a fecha inicio')
+            # Validar que el período no exceda 31 días
+            dias_diferencia = (fecha_fin - fecha_inicio).days
+            if dias_diferencia > 31:
+                raise ValueError('El período de liquidación no puede exceder 31 días')
+        return v

@@ -10,6 +10,7 @@ import NuevaLiquidacion from '@/components/NuevaLiquidacion';
 import Historial from '@/components/Historial';
 import LiquidacionFinal from '@/components/LiquidacionFinal';
 import LiquidacionLote from '@/components/LiquidacionLote';
+import LiquidacionAvanzada from '@/components/LiquidacionAvanzada';
 import Configuracion from '@/components/Configuracion';
 import '@/App.css';
 
@@ -82,6 +83,7 @@ function App() {
       case 'liquidacion': return <NuevaLiquidacion {...props} />;
       case 'liquidacion-final': return <LiquidacionFinal {...props} />;
       case 'liquidacion-lote': return <LiquidacionLote {...props} />;
+      case 'liquidacion-avanzada': return <LiquidacionAvanzada {...props} />;
       case 'historial': return <Historial {...props} />;
       case 'configuracion': return <Configuracion {...props} onUpdate={setConfig} empresas={empresas} onEmpresaUpdate={(emp) => { setEmpresaActiva(emp); }} />;
       default: return <Dashboard {...props} />;
@@ -122,7 +124,7 @@ function App() {
           </div>
         </main>
 
-        {activeSection !== 'liquidacion' && activeSection !== 'liquidacion-final' && activeSection !== 'liquidacion-lote' && (
+        {activeSection !== 'liquidacion' && activeSection !== 'liquidacion-final' && activeSection !== 'liquidacion-lote' && activeSection !== 'liquidacion-avanzada' && (
           <button
             data-testid="fab-nueva-liquidacion"
             onClick={() => setActiveSection('liquidacion')}
