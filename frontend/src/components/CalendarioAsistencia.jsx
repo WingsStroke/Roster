@@ -30,6 +30,7 @@ export default function CalendarioAsistencia({
   fechaFin,
   festivos = [],
   onActualizarAsistencia,
+  onCrearAsistencia,
   onRecargar
 }) {
   const [diaSeleccionado, setDiaSeleccionado] = useState(null);
@@ -156,16 +157,29 @@ export default function CalendarioAsistencia({
   };
 
   const handleGuardarDia = async (datos) => {
-    if (!diaSeleccionado?.asistencia) return false;
+    if (!diaSeleccionado) return false;
     
-    const exito = await onActualizarAsistencia(diaSeleccionado.asistencia.id, datos);
-    if (exito) {
-      // Actualizar el día seleccionado con los nuevos datos
-      setDiaSeleccionado(prev => ({
-        ...prev,
-        asistencia: { ...prev.asistencia, ...datos }
-      }));
+    let exito;
+    
+    if (diaSeleccionado.asistencia) {
+      // Actualizar asistencia existente
+      exito = await onActualizarAsistencia(diaSeleccionado.asistencia.id, datos);
+      if (exito) {
+        // Actualizar el día seleccionado con los nuevos datos
+        setDiaSeleccionado(prev => ({
+          ...prev,
+          asistencia: { ...prev.asistencia, ...datos }
+        }));
+      }
+    } else {
+      // Crear nueva asistencia
+      exito = await onCrearAsistencia(diaSeleccionado.fecha, datos);
+      if (exito) {
+        // Recargar asistencias para obtener el nuevo registro con ID
+        await onRecargar();
+      }
     }
+    
     return exito;
   };
 

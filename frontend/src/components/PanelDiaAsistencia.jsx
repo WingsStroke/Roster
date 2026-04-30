@@ -62,15 +62,30 @@ export default function PanelDiaAsistencia({
 
   // Resetear formulario cuando cambia el día seleccionado
   useEffect(() => {
+    const horarioDefault = empleado?.horario || {
+      hora_entrada_default: '08:00',
+      hora_salida_default: '17:00',
+      minutos_almuerzo_default: 60
+    };
+
     if (dia?.asistencia) {
+      // Día con asistencia existente
       reset({
         estado: dia.asistencia.estado || 'asistio',
-        hora_entrada: dia.asistencia.hora_entrada || empleado?.horario?.hora_entrada_default || '08:00',
-        hora_salida: dia.asistencia.hora_salida || empleado?.horario?.hora_salida_default || '17:00',
-        minutos_almuerzo: dia.asistencia.minutos_almuerzo || empleado?.horario?.minutos_almuerzo_default || 60,
+        hora_entrada: dia.asistencia.hora_entrada || horarioDefault.hora_entrada_default,
+        hora_salida: dia.asistencia.hora_salida || horarioDefault.hora_salida_default,
+        minutos_almuerzo: dia.asistencia.minutos_almuerzo ?? horarioDefault.minutos_almuerzo_default,
+      });
+    } else if (dia) {
+      // Día nuevo sin asistencia - usar valores por defecto
+      reset({
+        estado: dia.esFestivo ? 'festivo' : 'asistio',
+        hora_entrada: horarioDefault.hora_entrada_default,
+        hora_salida: horarioDefault.hora_salida_default,
+        minutos_almuerzo: horarioDefault.minutos_almuerzo_default,
       });
     }
-  }, [dia?.fecha, reset]);
+  }, [dia?.fecha, reset, empleado]);
 
   // Observar cambios para recalcular preview
   const horaEntrada = watch('hora_entrada');
@@ -300,10 +315,17 @@ export default function PanelDiaAsistencia({
       <CardContent className="flex-1 flex flex-col">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 flex-1 flex flex-col">
           
-          {/* Info del empleado */}
-          <div className="flex items-center gap-2 text-sm text-[#A0A0A0] bg-[#1A1A1A] rounded-lg p-2">
-            <User size={14} />
-            <span className="truncate">{empleado?.nombre || 'Empleado'}</span>
+          {/* Info del empleado y estado del día */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-[#A0A0A0] bg-[#1A1A1A] rounded-lg p-2 flex-1">
+              <User size={14} />
+              <span className="truncate">{empleado?.nombre || 'Empleado'}</span>
+            </div>
+            {!dia?.asistencia && (
+              <Badge variant="outline" className="ml-2 bg-amber-950/30 border-amber-600/30 text-amber-200 text-[10px]">
+                Nuevo
+              </Badge>
+            )}
           </div>
 
           <Separator className="bg-[#2A2A2A]" />

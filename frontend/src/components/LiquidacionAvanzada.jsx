@@ -217,6 +217,50 @@ export default function LiquidacionAvanzada({ empresaActiva, empleados, config, 
     }
   };
 
+  // Crear nueva asistencia para un día sin registro
+  const crearAsistencia = async (fecha, datos) => {
+    try {
+      const horarioDefault = empleadoSeleccionado.horario || {
+        hora_entrada_default: '08:00',
+        hora_salida_default: '17:00',
+        minutos_almuerzo_default: 60,
+        jornada_diaria_horas: 8
+      };
+
+      const payload = {
+        empleado_id: empleadoSeleccionado.id,
+        empresa_id: empresaActiva.id,
+        fecha: fecha,
+        estado: datos.estado,
+        hora_entrada: datos.hora_entrada || horarioDefault.hora_entrada_default,
+        hora_salida: datos.hora_salida || horarioDefault.hora_salida_default,
+        minutos_almuerzo: datos.minutos_almuerzo ?? horarioDefault.minutos_almuerzo_default,
+        novedades: datos.novedades || []
+      };
+
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/asistencias`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const nuevaAsistencia = await response.json();
+        // Agregar al estado local
+        setAsistencias(prev => [...prev, nuevaAsistencia].sort((a, b) => a.fecha.localeCompare(b.fecha)));
+        toast.success('Asistencia creada correctamente');
+        return true;
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Error creando asistencia');
+        return false;
+      }
+    } catch (error) {
+      toast.error('Error de conexión');
+      return false;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -340,6 +384,7 @@ export default function LiquidacionAvanzada({ empresaActiva, empleados, config, 
           fechaFin={fechaFin}
           festivos={festivos}
           onActualizarAsistencia={guardarAsistencia}
+          onCrearAsistencia={crearAsistencia}
           onRecargar={cargarAsistencias}
         />
       )}
