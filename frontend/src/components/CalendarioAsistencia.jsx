@@ -10,16 +10,18 @@ import {
   Stethoscope,
   Umbrella,
   Plane,
-  CalendarDays
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import DialogoDiaAsistencia from './DialogoDiaAsistencia';
+import PanelDiaAsistencia from './PanelDiaAsistencia';
 
 /**
  * Componente de calendario interactivo para gestionar asistencia diaria.
- * Muestra días del período con colores según estado y permite editar cada día.
+ * Layout de dos columnas: calendario compacto a la izquierda, panel de configuración a la derecha.
  */
 export default function CalendarioAsistencia({
   empleado,
@@ -31,7 +33,6 @@ export default function CalendarioAsistencia({
   onRecargar
 }) {
   const [diaSeleccionado, setDiaSeleccionado] = useState(null);
-  const [mostrarDialogo, setMostrarDialogo] = useState(false);
 
   // Generar array de fechas del período
   const diasCalendario = useMemo(() => {
@@ -152,7 +153,6 @@ export default function CalendarioAsistencia({
 
   const handleClickDia = (dia) => {
     setDiaSeleccionado(dia);
-    setMostrarDialogo(true);
   };
 
   const handleGuardarDia = async (datos) => {
@@ -160,23 +160,48 @@ export default function CalendarioAsistencia({
     
     const exito = await onActualizarAsistencia(diaSeleccionado.asistencia.id, datos);
     if (exito) {
-      setMostrarDialogo(false);
-      setDiaSeleccionado(null);
+      // Actualizar el día seleccionado con los nuevos datos
+      setDiaSeleccionado(prev => ({
+        ...prev,
+        asistencia: { ...prev.asistencia, ...datos }
+      }));
     }
     return exito;
   };
 
+  const handleDiaAnterior = () => {
+    const idx = diasCalendario.findIndex(d => d.fecha === diaSeleccionado?.fecha);
+    if (idx > 0) {
+      setDiaSeleccionado(diasCalendario[idx - 1]);
+    }
+  };
+
+  const handleDiaSiguiente = () => {
+    const idx = diasCalendario.findIndex(d => d.fecha === diaSeleccionado?.fecha);
+    if (idx >= 0 && idx < diasCalendario.length - 1) {
+      setDiaSeleccionado(diasCalendario[idx + 1]);
+    }
+  };
+
+  // Seleccionar el primer día automáticamente al cargar
+  useMemo(() => {
+    if (diasCalendario.length > 0 && !diaSeleccionado) {
+      const primerDiaLaboral = diasCalendario.find(d => 
+        d.asistencia?.estado === 'asistio' || !d.esFestivo
+      ) || diasCalendario[0];
+      setDiaSeleccionado(primerDiaLaboral);
+    }
+  }, [diasCalendario]);
+
   return (
-    <Card className="bg-[#141414] border-[#2A2A2A]">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-white text-base font-medium">
-            Calendario de Asistencia: {empleado?.nombre}
-          </CardTitle>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-[#A0A0A0]">
-              {fechaInicio} al {fechaFin}
-            </span>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Panel izquierdo: Calendario compacto */}
+      <Card className="bg-[#141414] border-[#2A2A2A]">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-white text-base font-medium">
+              Calendario: {empleado?.nombre}
+            </CardTitle>
             <Button
               variant="outline"
               size="sm"
@@ -186,108 +211,94 @@ export default function CalendarioAsistencia({
               Actualizar
             </Button>
           </div>
-        </div>
 
-        {/* Leyenda y estadísticas */}
-        <div className="flex flex-wrap gap-2 mt-2">
-          <Badge variant="outline" className="bg-green-950/30 border-green-600/30 text-green-200 text-xs">
-            <CheckCircle2 size={10} className="mr-1" />
-            Asistió ({estadisticas.asistidos})
-          </Badge>
-          <Badge variant="outline" className="bg-orange-950/30 border-orange-600/30 text-orange-200 text-xs">
-            <AlertTriangle size={10} className="mr-1" />
-            Con Extras ({estadisticas.horasExtras})
-          </Badge>
-          <Badge variant="outline" className="bg-indigo-950/30 border-indigo-600/30 text-indigo-200 text-xs">
-            <Moon size={10} className="mr-1" />
-            Nocturno
-          </Badge>
-          <Badge variant="outline" className="bg-red-950/30 border-red-600/30 text-red-200 text-xs">
-            <XCircle size={10} className="mr-1" />
-            Inasistencia ({estadisticas.inasistencias})
-          </Badge>
-          <Badge variant="outline" className="bg-purple-950/30 border-purple-600/30 text-purple-200 text-xs">
-            <Stethoscope size={10} className="mr-1" />
-            Incapacidad ({estadisticas.incapacidades})
-          </Badge>
-          <Badge variant="outline" className="bg-yellow-950/30 border-yellow-600/30 text-yellow-200 text-xs">
-            <Umbrella size={10} className="mr-1" />
-            Licencia ({estadisticas.licencias})
-          </Badge>
-          <Badge variant="outline" className="bg-blue-950/30 border-blue-600/30 text-blue-200 text-xs">
-            <CalendarDays size={10} className="mr-1" />
-            Festivo ({estadisticas.festivos})
-          </Badge>
-        </div>
-      </CardHeader>
+          {/* Leyenda compacta */}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            <Badge variant="outline" className="bg-green-950/30 border-green-600/30 text-green-200 text-[10px] px-1.5">
+              Asistió ({estadisticas.asistidos})
+            </Badge>
+            <Badge variant="outline" className="bg-orange-950/30 border-orange-600/30 text-orange-200 text-[10px] px-1.5">
+              Extras ({estadisticas.horasExtras})
+            </Badge>
+            <Badge variant="outline" className="bg-indigo-950/30 border-indigo-600/30 text-indigo-200 text-[10px] px-1.5">
+              Nocturno
+            </Badge>
+            <Badge variant="outline" className="bg-red-950/30 border-red-600/30 text-red-200 text-[10px] px-1.5">
+              Inasist. ({estadisticas.inasistencias})
+            </Badge>
+            <Badge variant="outline" className="bg-purple-950/30 border-purple-600/30 text-purple-200 text-[10px] px-1.5">
+              Incap. ({estadisticas.incapacidades})
+            </Badge>
+            <Badge variant="outline" className="bg-yellow-950/30 border-yellow-600/30 text-yellow-200 text-[10px] px-1.5">
+              Lic. ({estadisticas.licencias})
+            </Badge>
+            <Badge variant="outline" className="bg-blue-950/30 border-blue-600/30 text-blue-200 text-[10px] px-1.5">
+              Fest. ({estadisticas.festivos})
+            </Badge>
+          </div>
+        </CardHeader>
 
-      <CardContent>
-        {/* Grid de calendario */}
-        <div className="grid grid-cols-7 gap-2">
-          {/* Encabezados de días de la semana */}
-          {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((dia) => (
-            <div key={dia} className="text-center text-[#A0A0A0] text-xs py-2 font-medium">
-              {dia}
-            </div>
-          ))}
+        <CardContent className="pt-0">
+          {/* Grid de calendario compacto */}
+          <div className="grid grid-cols-7 gap-1">
+            {/* Encabezados de días de la semana */}
+            {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((dia, idx) => (
+              <div key={dia + idx} className="text-center text-[#A0A0A0] text-[10px] py-1 font-medium">
+                {dia}
+              </div>
+            ))}
 
-          {/* Días vacíos al inicio para alinear */}
-          {Array.from({ length: diasCalendario[0]?.diaSemana || 0 }).map((_, idx) => (
-            <div key={`empty-${idx}`} className="aspect-square" />
-          ))}
+            {/* Días vacíos al inicio para alinear */}
+            {Array.from({ length: diasCalendario[0]?.diaSemana || 0 }).map((_, idx) => (
+              <div key={`empty-${idx}`} className="aspect-square" />
+            ))}
 
-          {/* Celdas de días */}
-          {diasCalendario.map((dia) => {
-            const styles = getEstadoStyles(dia);
-            const tieneAlertas = dia.asistencia?.calculo_diario?.alertas?.length > 0;
-            
-            return (
-              <button
-                key={dia.fecha}
-                onClick={() => handleClickDia(dia)}
-                className={`
-                  aspect-square rounded-lg border p-2 flex flex-col items-center justify-center
-                  transition-all duration-200 hover:scale-105 hover:shadow-lg
-                  ${styles}
-                `}
-              >
-                <span className="text-lg font-semibold">{dia.diaMes}</span>
-                <div className="flex items-center gap-1 mt-1">
-                  {dia.asistencia && getEstadoIcono(dia.asistencia.estado)}
-                  {tieneAlertas && <AlertTriangle size={12} className="text-amber-400" />}
-                  {dia.asistencia?.calculo_diario?.horas_nocturnas > 0 && (
-                    <Moon size={12} />
-                  )}
-                </div>
-                {dia.asistencia?.estado === 'asistio' && (
-                  <div className="text-[10px] mt-1 opacity-80">
-                    {dia.asistencia.hora_entrada?.substring(0, 5)}-{dia.asistencia.hora_salida?.substring(0, 5)}
+            {/* Celdas de días */}
+            {diasCalendario.map((dia) => {
+              const styles = getEstadoStyles(dia);
+              const tieneAlertas = dia.asistencia?.calculo_diario?.alertas?.length > 0;
+              const isSelected = diaSeleccionado?.fecha === dia.fecha;
+              
+              return (
+                <button
+                  key={dia.fecha}
+                  onClick={() => handleClickDia(dia)}
+                  className={`
+                    aspect-square rounded border p-1 flex flex-col items-center justify-center
+                    transition-all duration-200 hover:scale-110
+                    ${styles}
+                    ${isSelected ? 'ring-1 ring-white' : ''}
+                  `}
+                >
+                  <span className="text-sm font-semibold leading-none">{dia.diaMes}</span>
+                  <div className="flex items-center gap-0.5 mt-0.5">
+                    {dia.asistencia && (
+                      <span className="scale-75 origin-center">{getEstadoIcono(dia.asistencia.estado)}</span>
+                    )}
+                    {tieneAlertas && <AlertTriangle size={8} className="text-amber-400" />}
                   </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Nota informativa */}
-        <p className="text-[#A0A0A0] text-xs mt-4 text-center">
-          Haz clic en cualquier día para editar la asistencia. Los festivos y domingos se marcan automáticamente.
-          Las horas nocturnas (21:00-06:00) se calculan automáticamente con recargo del 35%.
-        </p>
-      </CardContent>
+          {/* Nota informativa */}
+          <p className="text-[#A0A0A0] text-[10px] mt-3 text-center leading-tight">
+            Haz clic en un día para editar. Horas nocturnas (21:00-06:00) con recargo 35%.
+          </p>
+        </CardContent>
+      </Card>
 
-      {/* Diálogo para editar día */}
-      {mostrarDialogo && diaSeleccionado && (
-        <DialogoDiaAsistencia
-          dia={diaSeleccionado}
-          empleado={empleado}
-          onGuardar={handleGuardarDia}
-          onCerrar={() => {
-            setMostrarDialogo(false);
-            setDiaSeleccionado(null);
-          }}
-        />
-      )}
-    </Card>
+      {/* Panel derecho: Configuración del día seleccionado */}
+      <PanelDiaAsistencia
+        dia={diaSeleccionado}
+        empleado={empleado}
+        onGuardar={handleGuardarDia}
+        onAnterior={handleDiaAnterior}
+        onSiguiente={handleDiaSiguiente}
+        puedeAnterior={diasCalendario.findIndex(d => d.fecha === diaSeleccionado?.fecha) > 0}
+        puedeSiguiente={diasCalendario.findIndex(d => d.fecha === diaSeleccionado?.fecha) < diasCalendario.length - 1}
+      />
+    </div>
   );
 }
