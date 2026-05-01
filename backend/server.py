@@ -4,6 +4,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import traceback
 from pathlib import Path
 import uuid
 from datetime import datetime, timezone, date, timedelta
@@ -469,77 +470,84 @@ async def crear_liquidacion_avanzada(data: LiquidacionAvanzadaCreate):
     Crear liquidación basada en asistencia diaria.
     Calcula automáticamente horas ordinarias, nocturnas, extras y recargos.
     """
-    # Verificar que el empleado existe
-    empleado = await db.empleados.find_one({"id": data.empleado_id}, {"_id": 0})
-    if not empleado:
-        raise HTTPException(status_code=404, detail="Empleado no encontrado")
-    
-    # Obtener configuración
-    config = await db.configuracion.find_one({}, {"_id": 0})
-    if not config:
-        config = {"smmlv": 1750905, "auxilio_transporte": 249095, "jornada_horas": 44, "ano": 2026}
-    
-    # Obtener registros de asistencia del período
-    fecha_inicio = date.fromisoformat(data.fecha_inicio)
-    fecha_fin = date.fromisoformat(data.fecha_fin)
-    
-    asistencias_raw = await db.asistencias.find({
-        "empleado_id": data.empleado_id,
-        "fecha": {"$gte": data.fecha_inicio, "$lte": data.fecha_fin}
-    }, {"_id": 0}).sort("fecha", 1).to_list(1000)
-    
-    if not asistencias_raw:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"No hay registros de asistencia para el empleado en el período {data.fecha_inicio} a {data.fecha_fin}"
+    try:
+        # Verificar que el empleado existe
+        empleado = await db.empleados.find_one({"id": data.empleado_id}, {"_id": 0})
+        if not empleado:
+            raise HTTPException(status_code=404, detail="Empleado no encontrado")
+        
+        # Obtener configuración
+        config = await db.configuracion.find_one({}, {"_id": 0})
+        if not config:
+            config = {"smmlv": 1750905, "auxilio_transporte": 249095, "jornada_horas": 44, "ano": 2026}
+        
+        # Obtener registros de asistencia del período
+        fecha_inicio = date.fromisoformat(data.fecha_inicio)
+        fecha_fin = date.fromisoformat(data.fecha_fin)
+        
+        asistencias_raw = await db.asistencias.find({
+            "empleado_id": data.empleado_id,
+            "fecha": {"$gte": data.fecha_inicio, "$lte": data.fecha_fin}
+        }, {"_id": 0}).sort("fecha", 1).to_list(1000)
+        
+        if not asistencias_raw:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No hay registros de asistencia para el empleado en el período {data.fecha_inicio} a {data.fecha_fin}"
+            )
+        
+        # Obtener horario del empleado
+        horario = empleado.get("horario", {
+            "hora_entrada_default": "08:00",
+            "hora_salida_default": "17:00",
+            "minutos_almuerzo_default": 60,
+            "dias_laborales": [1, 2, 3, 4, 5],
+            "jornada_diaria_horas": 8
+        })
+        
+        # Calcular liquidación
+        jornada_diaria = horario.get("jornada_diaria_horas", 8)
+        
+        resultado = calcular_liquidacion_asistencia(
+            empleado_id=data.empleado_id,
+            empresa_id=data.empresa_id,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            asistencias=asistencias_raw,
+            salario_mensual=empleado.get("salario", 0),
+            auxilio_transporte_mensual=config.get("auxilio_transporte", 249095),
+            jornada_diaria_horas=jornada_diaria,
+            config=config
         )
-    
-    # Obtener horario del empleado
-    horario = empleado.get("horario", {
-        "hora_entrada_default": "08:00",
-        "hora_salida_default": "17:00",
-        "minutos_almuerzo_default": 60,
-        "dias_laborales": [1, 2, 3, 4, 5],
-        "jornada_diaria_horas": 8
-    })
-    
-    # Calcular liquidación
-    jornada_diaria = horario.get("jornada_diaria_horas", 8)
-    
-    resultado = calcular_liquidacion_asistencia(
-        empleado_id=data.empleado_id,
-        empresa_id=data.empresa_id,
-        fecha_inicio=fecha_inicio,
-        fecha_fin=fecha_fin,
-        asistencias=asistencias_raw,
-        salario_mensual=empleado.get("salario", 0),
-        auxilio_transporte_mensual=config.get("auxilio_transporte", 249095),
-        jornada_diaria_horas=jornada_diaria,
-        config=config
-    )
-    
-    # Guardar resultado en base de datos
-    resultado_dict = dataclass_to_dict(resultado)
-    liquidacion_doc = {
-        "id": str(uuid.uuid4()),
-        "empleado_id": data.empleado_id,
-        "empresa_id": data.empresa_id,
-        "fecha_inicio": data.fecha_inicio,
-        "fecha_fin": data.fecha_fin,
-        "tipo_periodo": data.tipo_periodo,
-        "resultado": resultado_dict,
-        "estado": "calculada",
-        "fecha_calculo": datetime.now(timezone.utc).isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db.liquidaciones_avanzadas.insert_one(liquidacion_doc)
-    
-    return {
-        "liquidacion_id": liquidacion_doc["id"],
-        "resultado": resultado_dict,
-        "estado": "calculada"
-    }
+        
+        # Guardar resultado en base de datos
+        resultado_dict = dataclass_to_dict(resultado)
+        liquidacion_doc = {
+            "id": str(uuid.uuid4()),
+            "empleado_id": data.empleado_id,
+            "empresa_id": data.empresa_id,
+            "fecha_inicio": data.fecha_inicio,
+            "fecha_fin": data.fecha_fin,
+            "tipo_periodo": data.tipo_periodo,
+            "resultado": resultado_dict,
+            "estado": "calculada",
+            "fecha_calculo": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        await db.liquidaciones_avanzadas.insert_one(liquidacion_doc)
+        
+        return {
+            "liquidacion_id": liquidacion_doc["id"],
+            "resultado": resultado_dict,
+            "estado": "calculada"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error calculando liquidación: {str(e)}")
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @api_router.get("/liquidaciones-avanzadas")
