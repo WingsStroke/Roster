@@ -138,7 +138,7 @@ def calcular_horas_nocturnas(hora_entrada_dec: float, hora_salida_dec: float) ->
     elif hora_entrada_dec < HORA_INICIO_NOCTURNA and hora_salida_dec > HORA_INICIO_NOCTURNA:
         horas_nocturnas = hora_salida_dec - HORA_INICIO_NOCTURNA
     # Caso 3: Jornada que cruza medianoche (ej: 20:00 a 02:00)
-    elif hora_entrada_dec < HORA_INICIO_NOCTURNA and hora_salida_dec < HORA_ENTRADA_DEC and hora_salida_dec <= HORA_FIN_NOCTURNA:
+    elif hora_entrada_dec < HORA_INICIO_NOCTURNA and hora_salida_dec < hora_entrada_dec and hora_salida_dec <= HORA_FIN_NOCTURNA:
         horas_nocturnas = (24 - HORA_INICIO_NOCTURNA) + hora_salida_dec
     
     return max(0, horas_nocturnas)
