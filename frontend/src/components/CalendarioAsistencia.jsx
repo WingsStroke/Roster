@@ -103,7 +103,7 @@ export default function CalendarioAsistencia({
 
     // Con asistencia: mostrar el color según el estado real
     switch (asistencia.estado) {
-      case 'asistio':
+      case 'asistio': {
         // Verificar si tiene horas extras
         const tieneExtras = asistencia.calculo_diario?.horas_extra_diurna > 0 ||
                            asistencia.calculo_diario?.horas_extra_nocturna > 0;
@@ -116,6 +116,7 @@ export default function CalendarioAsistencia({
           return 'bg-indigo-950/30 border-indigo-600/30 text-indigo-200';
         }
         return 'bg-green-950/30 border-green-600/30 text-green-200';
+      }
       
       case 'inasistencia':
         return 'bg-red-950/30 border-red-600/30 text-red-200';
@@ -128,6 +129,9 @@ export default function CalendarioAsistencia({
       
       case 'vacaciones':
         return 'bg-cyan-950/30 border-cyan-600/30 text-cyan-200';
+
+      case 'festivo':
+        return 'bg-blue-950/30 border-blue-600/30 text-blue-200';
       
       default:
         return 'bg-[#1A1A1A] border-[#2A2A2A] text-[#A0A0A0]';
@@ -164,11 +168,7 @@ export default function CalendarioAsistencia({
       // Actualizar asistencia existente
       exito = await onActualizarAsistencia(diaSeleccionado.asistencia.id, datos);
       if (exito) {
-        // Actualizar el día seleccionado con los nuevos datos
-        setDiaSeleccionado(prev => ({
-          ...prev,
-          asistencia: { ...prev.asistencia, ...datos }
-        }));
+        await onRecargar();
       }
     } else {
       // Crear nueva asistencia
