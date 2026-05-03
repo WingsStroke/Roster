@@ -19,6 +19,12 @@ const emptyForm = {
   tipo_contrato: 'indefinido', salario: '', riesgo_arl: 'I',
   auxilio_transporte: true, eps: '', afp: '', caja: '',
   cuenta_bancaria: '', estado: 'activo',
+  // Horario contractual (opcional)
+  hora_entrada_default: '',
+  hora_salida_default: '',
+  minutos_almuerzo_default: '',
+  dias_laborales: [1, 2, 3, 4, 5], // Lun-Vie por defecto
+  jornada_diaria_horas: '',
 };
 
 export default function Empleados({ empresaActiva, empleados, onRefresh }) {
@@ -36,7 +42,43 @@ export default function Empleados({ empresaActiva, empleados, onRefresh }) {
   );
 
   const openNew = () => { setForm({ ...emptyForm }); setEditingId(null); setDialogOpen(true); };
-  const openEdit = (emp) => { setForm({ ...emp, salario: String(emp.salario), auxilio_transporte: Boolean(emp.auxilio_transporte) }); setEditingId(emp.id); setDialogOpen(true); };
+  const openEdit = (emp) => {
+    const horario = emp.horario || {};
+    setForm({
+      ...emp,
+      salario: String(emp.salario),
+      auxilio_transporte: Boolean(emp.auxilio_transporte),
+      // Cargar horario si existe
+      hora_entrada_default: horario.hora_entrada_default || '',
+      hora_salida_default: horario.hora_salida_default || '',
+      minutos_almuerzo_default: horario.minutos_almuerzo_default ? String(horario.minutos_almuerzo_default) : '',
+      dias_laborales: horario.dias_laborales || [1, 2, 3, 4, 5],
+      jornada_diaria_horas: horario.jornada_diaria_horas ? String(horario.jornada_diaria_horas) : '',
+    });
+    setEditingId(emp.id);
+    setDialogOpen(true);
+  };
+
+  const toggleDiaLaboral = (dia) => {
+    setForm(prev => {
+      const dias = prev.dias_laborales || [];
+      if (dias.includes(dia)) {
+        return { ...prev, dias_laborales: dias.filter(d => d !== dia) };
+      } else {
+        return { ...prev, dias_laborales: [...dias, dia].sort() };
+      }
+    });
+  };
+
+  const DIAS_SEMANA = [
+    { value: 1, label: 'Lun' },
+    { value: 2, label: 'Mar' },
+    { value: 3, label: 'Mié' },
+    { value: 4, label: 'Jue' },
+    { value: 5, label: 'Vie' },
+    { value: 6, label: 'Sáb' },
+    { value: 0, label: 'Dom' },
+  ];
 
   const handleSave = async () => {
     if (!form.nombre || !form.cedula || !form.cargo || !form.salario) {
@@ -48,6 +90,27 @@ export default function Empleados({ empresaActiva, empleados, onRefresh }) {
       delete data.id;
       delete data._id;
       delete data.created_at;
+
+      // Construir horario si hay datos configurados
+      const tieneHorario = form.hora_entrada_default || form.hora_salida_default ||
+                          form.minutos_almuerzo_default || form.jornada_diaria_horas;
+      if (tieneHorario) {
+        data.horario = {
+          hora_entrada_default: form.hora_entrada_default || '08:00',
+          hora_salida_default: form.hora_salida_default || '17:00',
+          minutos_almuerzo_default: parseInt(form.minutos_almuerzo_default) || 60,
+          dias_laborales: form.dias_laborales || [1, 2, 3, 4, 5],
+          jornada_diaria_horas: parseInt(form.jornada_diaria_horas) || 8,
+        };
+      }
+
+      // Eliminar campos sueltos de horario del data principal
+      delete data.hora_entrada_default;
+      delete data.hora_salida_default;
+      delete data.minutos_almuerzo_default;
+      delete data.dias_laborales;
+      delete data.jornada_diaria_horas;
+
       if (editingId) {
         await api.updateEmpleado(editingId, data);
         toast.success('Empleado actualizado');
@@ -233,6 +296,51 @@ export default function Empleados({ empresaActiva, empleados, onRefresh }) {
             <div className="sm:col-span-2 flex items-center gap-3 pt-2">
               <Switch data-testid="emp-auxilio" checked={form.auxilio_transporte} onCheckedChange={v => u('auxilio_transporte', v)} />
               <Label className="text-sm text-[#A0A0A0]">Aplica auxilio de transporte</Label>
+            </div>
+
+            {/* Configuración de horario contractual (opcional) */}
+            <div className="sm:col-span-2 pt-4 border-t border-[#2A2A2A]">
+              <h4 className="text-white text-sm font-medium mb-3">Configuración de horario contractual (opcional)</h4>
+              <p className="text-[#A0A0A0] text-xs mb-4">Si no configura, se usarán los valores por defecto (08:00 - 17:00, 60 min almuerzo)</p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div>
+                  <Label className="text-[#A0A0A0] text-[10px] uppercase tracking-widest">Hora entrada</Label>
+                  <Input type="time" value={form.hora_entrada_default} onChange={e => u('hora_entrada_default', e.target.value)} className="mt-1.5 bg-[#0A0A0A] border-[#2A2A2A] rounded-[8px] focus:border-white" />
+                </div>
+                <div>
+                  <Label className="text-[#A0A0A0] text-[10px] uppercase tracking-widest">Hora salida</Label>
+                  <Input type="time" value={form.hora_salida_default} onChange={e => u('hora_salida_default', e.target.value)} className="mt-1.5 bg-[#0A0A0A] border-[#2A2A2A] rounded-[8px] focus:border-white" />
+                </div>
+                <div>
+                  <Label className="text-[#A0A0A0] text-[10px] uppercase tracking-widest">Almuerzo (min)</Label>
+                  <Input type="number" min="30" max="120" value={form.minutos_almuerzo_default} onChange={e => u('minutos_almuerzo_default', e.target.value)} placeholder="60" className="mt-1.5 bg-[#0A0A0A] border-[#2A2A2A] rounded-[8px] focus:border-white" />
+                </div>
+                <div>
+                  <Label className="text-[#A0A0A0] text-[10px] uppercase tracking-widest">Jornada (horas)</Label>
+                  <Input type="number" min="1" max="12" value={form.jornada_diaria_horas} onChange={e => u('jornada_diaria_horas', e.target.value)} placeholder="8" className="mt-1.5 bg-[#0A0A0A] border-[#2A2A2A] rounded-[8px] focus:border-white" />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-[#A0A0A0] text-[10px] uppercase tracking-widest mb-2 block">Días laborales</Label>
+                <div className="flex flex-wrap gap-2">
+                  {DIAS_SEMANA.map(dia => (
+                    <button
+                      key={dia.value}
+                      type="button"
+                      onClick={() => toggleDiaLaboral(dia.value)}
+                      className={`px-3 py-1.5 rounded-[6px] text-xs font-medium transition-colors ${
+                        form.dias_laborales?.includes(dia.value)
+                          ? 'bg-white text-black'
+                          : 'bg-[#0A0A0A] border border-[#2A2A2A] text-[#A0A0A0] hover:border-[#A0A0A0]'
+                      }`}
+                    >
+                      {dia.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[#2A2A2A]">

@@ -95,7 +95,7 @@ async def eliminar_empresa(empresa_id: str):
 
 # --- Empleados ---
 @api_router.post("/empleados")
-async def crear_empleado(data: EmpleadoCreate):
+async def crear_empleado(data: EmpleadoConHorarioCreate):
     doc = {**data.model_dump(), "id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()}
     await db.empleados.insert_one(doc)
     return await db.empleados.find_one({"id": doc["id"]}, {"_id": 0})
@@ -115,7 +115,7 @@ async def obtener_empleado(empleado_id: str):
 
 
 @api_router.put("/empleados/{empleado_id}")
-async def actualizar_empleado(empleado_id: str, data: EmpleadoUpdate):
+async def actualizar_empleado(empleado_id: str, data: EmpleadoConHorarioUpdate):
     update_dict = data.model_dump(exclude_unset=True, exclude={"id", "_id"})
     if not update_dict:
         raise HTTPException(status_code=400, detail="No hay campos para actualizar")
